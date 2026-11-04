@@ -1,0 +1,20 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Secretos y llaves: nunca se suben
+.env
+.env.*
+!.env.example
+*.pem
+keys/
+
+# Archivos subidos y APKs de prueba
+uploads/
+*.apk
+
+# Sistema
+Thumbs.db
+.DS_Store
