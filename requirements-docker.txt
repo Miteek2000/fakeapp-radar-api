@@ -1,0 +1,8 @@
+androguard==4.1.4
+celery==5.6.3
+fastapi==0.162.0
+loguru==0.7.3
+pydantic-settings==2.16.2
+python-multipart==0.0.33
+redis==8.1.0
+uvicorn==0.54.0

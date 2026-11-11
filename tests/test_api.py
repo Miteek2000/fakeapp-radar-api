@@ -1,16 +1,21 @@
 import hashlib
 import io
+import uuid
 import zipfile
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from app import store
 from app.config import settings
 from app.main import app
+from tests.apk_factory import make_apk
 
 client = TestClient(app)
 
 
-def fake_apk() -> bytes:
+def zip_con_texto() -> bytes:
+    """Un ZIP que pasa la validación de la subida pero NO es un APK real."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         z.writestr("AndroidManifest.xml", "contenido de prueba")
@@ -21,44 +26,83 @@ def upload(name: str, data: bytes):
     return client.post("/analyses", files={"file": (name, data, "application/octet-stream")})
 
 
+def upload_dir_vacia() -> bool:
+    return list(Path(settings.upload_dir).iterdir()) == []
+
+
 def test_health():
     r = client.get("/health")
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
 
 
-def test_upload_valido(tmp_path, monkeypatch):
-    monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
-    data = fake_apk()
-    r = upload("app.apk", data)
+def test_subida_y_consulta_del_resultado(tmp_path):
+    apk = make_apk(tmp_path / "banco.apk", permissions=["READ_SMS", "BIND_ACCESSIBILITY_SERVICE", "CAMERA"])
+    data = apk.read_bytes()
+
+    r = upload("banco.apk", data)
     assert r.status_code == 202
     body = r.json()
     assert body["sha256"] == hashlib.sha256(data).hexdigest()
     assert body["size_bytes"] == len(data)
     assert body["status"] == "pending"
-    assert (tmp_path / f"{body['id']}.apk").exists()
+
+    r = client.get(f"/analyses/{body['id']}")
+    assert r.status_code == 200
+    result = r.json()
+    assert result["status"] == "done"
+    assert result["error"] is None
+    assert result["report"]["risk_score"] == 47  # 20 + 25 + 2
+    assert result["report"]["risk_level"] == "medio"
+    assert result["report"]["hashes"]["sha256"] == hashlib.sha256(data).hexdigest()
+    # el APK se borra del disco al terminar
+    assert upload_dir_vacia()
 
 
-def test_rechaza_extension_incorrecta(tmp_path, monkeypatch):
-    monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
-    assert upload("foto.png", fake_apk()).status_code == 400
+def test_apk_ilegible_queda_como_failed():
+    r = upload("falso.apk", zip_con_texto())
+    assert r.status_code == 202
+    result = client.get(f"/analyses/{r.json()['id']}").json()
+    assert result["status"] == "failed"
+    assert result["report"] is None
+    assert "APK" in result["error"]
+    assert upload_dir_vacia()
 
 
-def test_rechaza_contenido_que_no_es_apk(tmp_path, monkeypatch):
-    monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
+def test_consulta_de_un_id_que_no_existe():
+    assert client.get(f"/analyses/{uuid.uuid4()}").status_code == 404
+
+
+def test_consulta_con_id_invalido():
+    assert client.get("/analyses/no-es-un-uuid").status_code == 422
+
+
+def test_rechaza_extension_incorrecta():
+    assert upload("foto.png", zip_con_texto()).status_code == 400
+
+
+def test_rechaza_contenido_que_no_es_apk():
     r = upload("falso.apk", b"esto es solo texto")
     assert r.status_code == 400
-    assert list(tmp_path.iterdir()) == []  # no deja basura en disco
+    assert upload_dir_vacia()
 
 
-def test_rechaza_archivo_vacio(tmp_path, monkeypatch):
-    monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
+def test_rechaza_archivo_vacio():
     assert upload("vacio.apk", b"").status_code == 400
 
 
-def test_rechaza_archivo_muy_grande(tmp_path, monkeypatch):
-    monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
+def test_rechaza_archivo_muy_grande(monkeypatch):
     monkeypatch.setattr(settings, "max_upload_mb", 0)
-    r = upload("grande.apk", fake_apk())
+    r = upload("grande.apk", zip_con_texto())
     assert r.status_code == 413
-    assert list(tmp_path.iterdir()) == []
+    assert upload_dir_vacia()
+
+
+def test_si_redis_falla_responde_503_y_no_deja_archivos(monkeypatch):
+    def redis_caido(*args, **kwargs):
+        raise ConnectionError("Redis no responde")
+
+    monkeypatch.setattr(store, "save", redis_caido)
+    r = upload("app.apk", zip_con_texto())
+    assert r.status_code == 503
+    assert upload_dir_vacia()

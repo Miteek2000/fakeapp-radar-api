@@ -1,16 +1,27 @@
 import hashlib
+import logging
 import uuid
 from pathlib import Path
+from uuid import UUID
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from starlette.concurrency import run_in_threadpool
 
+from app import store
 from app.config import settings
-from app.schemas import AnalysisCreated, AnalysisStatus
+from app.schemas import AnalysisCreated, AnalysisResult, AnalysisStatus
+from app.worker.tasks import analyze_apk_task
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/analyses", tags=["analyses"])
 
 CHUNK_SIZE = 1024 * 1024  # 1 MB
 ZIP_MAGIC = b"PK\x03\x04"  # un APK es un archivo ZIP
+
+
+def _enqueue(analysis_id: UUID) -> None:
+    store.save(analysis_id, AnalysisStatus.pending)
+    analyze_apk_task.delay(str(analysis_id))
 
 
 @router.post("", response_model=AnalysisCreated, status_code=status.HTTP_202_ACCEPTED)
@@ -51,9 +62,28 @@ async def create_analysis(file: UploadFile = File(...)):
         dest.unlink(missing_ok=True)
         raise
 
+    # Encolamos el análisis: el worker lo hará en segundo plano.
+    try:
+        await run_in_threadpool(_enqueue, analysis_id)
+    except Exception:
+        log.exception("No se pudo encolar el análisis %s", analysis_id)
+        dest.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=503,
+            detail="El servicio de análisis no está disponible, intenta de nuevo en un momento",
+        )
+
     return AnalysisCreated(
         id=analysis_id,
         sha256=sha256.hexdigest(),
         size_bytes=size,
         status=AnalysisStatus.pending,
     )
+
+
+@router.get("/{analysis_id}", response_model=AnalysisResult)
+def get_analysis(analysis_id: UUID):
+    data = store.load(analysis_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="No encontramos ese análisis (puede haber expirado)")
+    return data
