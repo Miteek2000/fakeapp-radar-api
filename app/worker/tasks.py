@@ -22,7 +22,7 @@ def analyze_apk_task(analysis_id: str) -> None:
     store.save(analysis_id, AnalysisStatus.running)
     try:
         report = analyze_apk(path)
-        store.save(analysis_id, AnalysisStatus.done, report=report.model_dump())
+        store.save(analysis_id, AnalysisStatus.done, report=report.model_dump(mode="json"))
     except InvalidApkError as exc:
         store.save(analysis_id, AnalysisStatus.failed, error=str(exc))
     except SoftTimeLimitExceeded:

@@ -19,9 +19,14 @@ CHUNK_SIZE = 1024 * 1024  # 1 MB
 ZIP_MAGIC = b"PK\x03\x04"  # un APK es un archivo ZIP
 
 
-def _enqueue(analysis_id: UUID) -> None:
-    store.save(analysis_id, AnalysisStatus.pending)
-    analyze_apk_task.delay(str(analysis_id))
+def _enqueue(analysis_id: UUID, sha256: str, size: int) -> None:
+    # Primero el registro (el worker lo va a actualizar) y luego la tarea.
+    store.create(analysis_id, sha256, size)
+    try:
+        analyze_apk_task.delay(str(analysis_id))
+    except Exception:
+        store.discard(analysis_id)  # no dejamos un análisis "pending" que nadie va a procesar
+        raise
 
 
 @router.post("", response_model=AnalysisCreated, status_code=status.HTTP_202_ACCEPTED)
@@ -64,7 +69,7 @@ async def create_analysis(file: UploadFile = File(...)):
 
     # Encolamos el análisis: el worker lo hará en segundo plano.
     try:
-        await run_in_threadpool(_enqueue, analysis_id)
+        await run_in_threadpool(_enqueue, analysis_id, sha256.hexdigest(), size)
     except Exception:
         log.exception("No se pudo encolar el análisis %s", analysis_id)
         dest.unlink(missing_ok=True)
@@ -85,5 +90,5 @@ async def create_analysis(file: UploadFile = File(...)):
 def get_analysis(analysis_id: UUID):
     data = store.load(analysis_id)
     if data is None:
-        raise HTTPException(status_code=404, detail="No encontramos ese análisis (puede haber expirado)")
+        raise HTTPException(status_code=404, detail="No encontramos ese análisis")
     return data

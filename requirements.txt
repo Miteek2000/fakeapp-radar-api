@@ -44,6 +44,8 @@ parso==0.8.7
 pluggy==1.7.0
 prompt_toolkit==3.0.53
 psutil==7.2.2
+psycopg==3.3.9
+psycopg-binary==3.3.9
 pure_eval==0.2.4
 pycparser==3.12
 pydantic==2.14.2
@@ -59,7 +61,7 @@ python-multipart==0.0.33
 PyYAML==6.0.3
 redis==8.1.0
 sortedcontainers==2.4.0
-SQLAlchemy==2.1.8
+SQLAlchemy==2.1.9
 stack-data==0.6.3
 starlette==1.10.0
 traitlets==5.16.1

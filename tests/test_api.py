@@ -7,6 +7,9 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app import store
+from app.db import session_scope
+from app.models import Analysis
+from app.worker.tasks import analyze_apk_task
 from app.config import settings
 from app.main import app
 from tests.apk_factory import make_apk
@@ -98,11 +101,32 @@ def test_rechaza_archivo_muy_grande(monkeypatch):
     assert upload_dir_vacia()
 
 
-def test_si_redis_falla_responde_503_y_no_deja_archivos(monkeypatch):
-    def redis_caido(*args, **kwargs):
-        raise ConnectionError("Redis no responde")
+def test_si_la_base_de_datos_falla_responde_503_y_no_deja_archivos(monkeypatch):
+    def base_caida(*args, **kwargs):
+        raise ConnectionError("La base de datos no responde")
 
-    monkeypatch.setattr(store, "save", redis_caido)
+    monkeypatch.setattr(store, "create", base_caida)
     r = upload("app.apk", zip_con_texto())
     assert r.status_code == 503
     assert upload_dir_vacia()
+
+
+def test_si_la_cola_falla_responde_503_y_no_deja_registros_ni_archivos(monkeypatch):
+    def cola_caida(*args, **kwargs):
+        raise ConnectionError("Redis no responde")
+
+    monkeypatch.setattr(analyze_apk_task, "delay", cola_caida)
+    r = upload("app.apk", zip_con_texto())
+    assert r.status_code == 503
+    assert upload_dir_vacia()
+    with session_scope() as s:
+        assert s.query(Analysis).count() == 0  # no queda un análisis "pending" huérfano
+
+
+def test_el_resultado_persiste_y_se_puede_consultar_varias_veces(tmp_path):
+    apk = make_apk(tmp_path / "a.apk", permissions=["CAMERA"])
+    analysis_id = upload("a.apk", apk.read_bytes()).json()["id"]
+    primero = client.get(f"/analyses/{analysis_id}").json()
+    segundo = client.get(f"/analyses/{analysis_id}").json()
+    assert primero == segundo
+    assert primero["status"] == "done"
