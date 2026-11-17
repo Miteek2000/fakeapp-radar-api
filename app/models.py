@@ -8,7 +8,11 @@ from app.db import Base
 
 
 class Analysis(Base):
-    """Un análisis de APK. El reporte completo va cifrado; el hash y el resumen, no."""
+    """Un análisis de APK. El reporte completo va cifrado; el hash y el resumen, no.
+
+    Esta clase solo MAPEA la tabla para que la API pueda leerla y escribirla. La tabla se
+    crea y se versiona en el repo fakeapp-radar-db (migraciones de Alembic).
+    """
 
     __tablename__ = "analyses"
     __table_args__ = (

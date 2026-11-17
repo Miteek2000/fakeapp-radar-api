@@ -1,21 +1,21 @@
-"""Pruebas contra un PostgreSQL real (migraciones incluidas).
+"""Pruebas contra el PostgreSQL REAL del repo fakeapp-radar-db (ya migrado).
 
-Se saltan solas si no defines TEST_DATABASE_URL. Ejemplo (usa una base de PRUEBAS, porque
-estas pruebas borran y vuelven a crear las tablas):
-    $env:TEST_DATABASE_URL = "postgresql+psycopg://fakeapp:CLAVE@localhost:5434/fakeapp_test"
+Se saltan solas si no defines TEST_DATABASE_URL. Levanta antes la base:
+    cd ..\\..\\DB\\fakeapp-radar-db ; docker compose up -d --build
+y usa una base de PRUEBAS (estas pruebas insertan y borran filas de `analyses`):
+    $env:TEST_DATABASE_URL = "postgresql+psycopg://fakeapp:CLAVE@localhost:5433/fakeapp_test"
+(la base de pruebas se migra con el migrador de ese repo; ver su README)
 """
 import os
 import uuid
 
 import pytest
-from alembic import command
-from alembic.config import Config
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app import db, store
-from app.config import settings
+from app.models import Analysis
 from app.schemas import AnalysisStatus
 
 pytestmark = pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="Falta TEST_DATABASE_URL")
@@ -25,17 +25,24 @@ REPORTE = {"package_name": "com.banco.falso", "risk_score": 83, "risk_level": "a
 
 @pytest.fixture
 def pg(monkeypatch):
-    url = os.environ["TEST_DATABASE_URL"]
-    monkeypatch.setattr(settings, "database_url", url)
-    cfg = Config("alembic.ini")
-    command.downgrade(cfg, "base")
-    command.upgrade(cfg, "head")  # prueba también que la migración funciona
-    engine = create_engine(url)
+    engine = create_engine(os.environ["TEST_DATABASE_URL"])
     monkeypatch.setattr(db, "_engine", engine)
     monkeypatch.setattr(db, "_session_factory", sessionmaker(engine, expire_on_commit=False))
+    with engine.begin() as c:
+        c.execute(text("delete from analyses"))
     yield engine
+    with engine.begin() as c:
+        c.execute(text("delete from analyses"))
     engine.dispose()
-    command.downgrade(cfg, "base")
+
+
+def test_el_mapeo_de_la_api_coincide_con_la_tabla_real(pg):
+    """Si alguien cambia la tabla en el repo -db (o el modelo aquí) y no el otro, esto avisa."""
+    real = {c["name"]: c for c in inspect(pg).get_columns("analyses")}
+    modelo = {c.name: c for c in Analysis.__table__.columns}
+    assert set(real) == set(modelo)
+    for nombre, col in modelo.items():
+        assert real[nombre]["nullable"] == col.nullable, f"nullable distinto en {nombre}"
 
 
 def test_ciclo_completo_en_postgres(pg):

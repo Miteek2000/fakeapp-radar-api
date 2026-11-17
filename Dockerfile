@@ -16,8 +16,6 @@ COPY requirements-docker.txt .
 RUN pip install -r requirements-docker.txt
 
 COPY app ./app
-COPY alembic.ini ./
-COPY migrations ./migrations
 
 # Carpeta compartida donde la API guarda los APK y el worker los lee.
 RUN mkdir -p /data/uploads && chown app:app /data/uploads

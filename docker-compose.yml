@@ -1,7 +1,11 @@
+# La base de datos NO está aquí: vive en el repo fakeapp-radar-db.
+# Orden de arranque:
+#   1) en fakeapp-radar-db:  docker compose up -d --build
+#   2) aquí:                 docker compose up --build -d
 x-app-env: &app-env
   UPLOAD_DIR: /data/uploads
   REDIS_URL: redis://:${REDIS_PASSWORD:?Falta REDIS_PASSWORD en .env}@redis:6379/0
-  DATABASE_URL: postgresql+psycopg://fakeapp:${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env}@db:5432/fakeapp_radar
+  DATABASE_URL: ${DATABASE_URL:?Falta DATABASE_URL en .env (apunta a la base del repo fakeapp-radar-db)}
   ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Falta ENCRYPTION_KEY en .env}
 
 services:
@@ -21,33 +25,6 @@ services:
       retries: 10
     # Sin "ports": Redis solo es visible para los otros contenedores, no desde tu PC.
 
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: fakeapp
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env}
-      POSTGRES_DB: fakeapp_radar
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fakeapp -d fakeapp_radar"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    # Sin "ports": solo la API y el worker llegan a la base. Para entrar tú:
-    #   docker compose exec db psql -U fakeapp -d fakeapp_radar
-
-  migrate:
-    build: .
-    image: fakeapp-radar-api:dev
-    command: ["alembic", "upgrade", "head"]
-    environment: *app-env
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: "no"
-
   api:
     build: .
     image: fakeapp-radar-api:dev
@@ -61,8 +38,9 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
+    networks:
+      - default
+      - fakeapp-net
 
   worker:
     build: .
@@ -75,9 +53,15 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
+    networks:
+      - default
+      - fakeapp-net
+
+networks:
+  # Red creada por el repo fakeapp-radar-db; por ahí la API llega a PostgreSQL.
+  fakeapp-net:
+    name: fakeapp-net
+    external: true
 
 volumes:
   uploads:
-  pgdata:

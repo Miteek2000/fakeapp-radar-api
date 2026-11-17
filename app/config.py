@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     analysis_time_limit_seconds: int = 120  # tiempo máximo por análisis
 
-    # Base de datos (fase 5). Ejemplo:
-    # postgresql+psycopg://fakeapp:CLAVE@db:5432/fakeapp_radar
+    # Base de datos (repo fakeapp-radar-db). Ejemplo:
+    # postgresql+psycopg://fakeapp:CLAVE@fakeapp-db:5432/fakeapp_radar
     database_url: str = ""
 
     # Clave AES-256 (32 bytes en base64) para cifrar los reportes. Nunca va en el código.
