@@ -2,11 +2,30 @@
 # Orden de arranque:
 #   1) en fakeapp-radar-db:  docker compose up -d --build
 #   2) aquí:                 docker compose up --build -d
+#
+# Aislamiento de red:
+#   backend      (interna, SIN internet): redis, api, worker, beat
+#   fakeapp-net  (interna, creada por el repo -db): llega a PostgreSQL
+#   edge         (con salida): solo la API, únicamente para publicar su puerto en tu PC
+# El worker abre APK no confiables: no está en ninguna red con salida, así que un APK
+# malicioso no podría sacar datos por internet aunque lograra ejecutar código.
+
 x-app-env: &app-env
   UPLOAD_DIR: /data/uploads
   REDIS_URL: redis://:${REDIS_PASSWORD:?Falta REDIS_PASSWORD en .env}@redis:6379/0
   DATABASE_URL: ${DATABASE_URL:?Falta DATABASE_URL en .env (apunta a la base del repo fakeapp-radar-db)}
   ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Falta ENCRYPTION_KEY en .env}
+  RETENTION_DAYS: ${RETENTION_DAYS:-30}
+  ORPHAN_UPLOAD_HOURS: ${ORPHAN_UPLOAD_HOURS:-24}
+
+# Endurecimiento común: sin privilegios extra, sin escalar permisos, disco de solo lectura.
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  tmpfs:
+    - /tmp
 
 services:
   redis:
@@ -23,6 +42,11 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    <<: *hardening
+    mem_limit: 256m
+    pids_limit: 100
+    networks:
+      - backend
     # Sin "ports": Redis solo es visible para los otros contenedores, no desde tu PC.
 
   api:
@@ -38,8 +62,12 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    <<: *hardening
+    mem_limit: 512m
+    pids_limit: 100
     networks:
-      - default
+      - backend
+      - edge
       - fakeapp-net
 
   worker:
@@ -53,12 +81,35 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    <<: *hardening
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 200
     networks:
-      - default
+      - backend
       - fakeapp-net
 
+  # Programa la limpieza diaria de retención (la ejecuta el worker).
+  beat:
+    build: .
+    image: fakeapp-radar-api:dev
+    restart: unless-stopped
+    command: ["celery", "-A", "app.worker.celery_app", "beat", "--loglevel=info", "--schedule=/tmp/celerybeat-schedule"]
+    environment: *app-env
+    depends_on:
+      redis:
+        condition: service_healthy
+    <<: *hardening
+    mem_limit: 256m
+    pids_limit: 50
+    networks:
+      - backend
+
 networks:
-  # Red creada por el repo fakeapp-radar-db; por ahí la API llega a PostgreSQL.
+  backend:
+    internal: true
+  edge: {}
+  # Creada por el repo fakeapp-radar-db (también interna).
   fakeapp-net:
     name: fakeapp-net
     external: true

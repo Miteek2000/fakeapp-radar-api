@@ -58,8 +58,26 @@ def test_lee_el_catalogo_real_cargado_por_el_repo_db(pg):
     """Necesita que la base de pruebas tenga corrido el migrador (tablas + seeds)."""
     with db.session_scope() as s:
         cat = load_catalog(s)
-    assert len(cat) >= 17
+    assert len(cat) >= 1000  # capa automática de AOSP + capa curada
     assert cat["android.permission.BIND_ACCESSIBILITY_SERVICE"].severity == "peligroso"
+
+
+def test_todo_el_catalogo_tiene_fuente_y_nivel_de_proteccion(pg):
+    with pg.connect() as c:
+        mal = c.execute(text("select android_name from permission_catalog where source is null or source = '' or protection_level is null")).all()
+        sin_aosp = c.execute(text("select android_name from permission_catalog where source not like '%AOSP%'")).all()
+    assert mal == [] and sin_aosp == []
+
+
+def test_la_capa_curada_manda_sobre_la_automatica(pg):
+    with db.session_scope() as s:
+        cat = load_catalog(s)
+    sms = cat["android.permission.READ_SMS"]
+    assert sms.severity == "peligroso" and sms.weight == 20 and sms.friendly_title == "Leer tus mensajes SMS"
+    generico = cat["android.permission.ACCEPT_HANDOVER"]
+    assert generico.severity == "atencion" and generico.weight == 4
+    with pg.connect() as c:
+        assert c.execute(text("select count(*) from permission_catalog where curated")).scalar() >= 52
 
 
 def test_ciclo_completo_en_postgres(pg):

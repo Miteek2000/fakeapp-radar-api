@@ -4,9 +4,11 @@ El reporte se cifra (AES-256-GCM) antes de guardarse; el hash SHA-256, el tamañ
 nivel de riesgo se guardan sin cifrar para poder buscar y sacar estadísticas.
 """
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
+
+from sqlalchemy import delete
 
 from app import crypto
 from app.db import session_scope
@@ -62,3 +64,11 @@ def load(analysis_id: str | UUID) -> dict[str, Any] | None:
             return None
         report = crypto.decrypt_json(row.report_enc, _aad(uid)) if row.report_enc else None
         return {"id": str(row.id), "status": row.status, "report": report, "error": row.error}
+
+
+def purge_older_than(days: int) -> int:
+    """Borra los análisis creados hace más de `days` días. Devuelve cuántos borró."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    with session_scope() as session:
+        result = session.execute(delete(Analysis).where(Analysis.created_at < cutoff))
+        return result.rowcount or 0

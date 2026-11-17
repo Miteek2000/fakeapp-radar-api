@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, Integer, LargeBinary, SmallInteger, String, Text, Uuid, func
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Integer, LargeBinary, SmallInteger, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -57,3 +57,8 @@ class PermissionCatalog(Base):
     severity: Mapped[str] = mapped_column(String(16))
     weight: Mapped[int] = mapped_column(SmallInteger)
     icon: Mapped[str] = mapped_column(String(32))
+    # Nivel de protección oficial de AOSP y claves de las fuentes (ver docs/fuentes.md en el repo -db).
+    protection_level: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str | None] = mapped_column(Text)
+    # true = explicación y peso escritos por el proyecto; false = texto genérico a partir de AOSP.
+    curated: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

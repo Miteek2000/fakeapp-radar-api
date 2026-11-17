@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     # postgresql+psycopg://fakeapp:CLAVE@fakeapp-db:5432/fakeapp_radar
     database_url: str = ""
 
+    # Retención: los análisis se borran pasados estos días; los APK que quedaron sueltos, pasadas estas horas.
+    retention_days: int = 30
+    orphan_upload_hours: int = 24
+
     # Clave AES-256 (32 bytes en base64) para cifrar los reportes. Nunca va en el código.
     encryption_key: str = ""
 
