@@ -7,7 +7,9 @@ from sqlalchemy.pool import StaticPool
 
 from app import db
 from app.config import settings
+from app.models import PermissionCatalog
 from app.worker.celery_app import celery_app
+from tests.catalogo_prueba import FILAS
 
 # Clave de prueba (32 bytes en base64). La real vive solo en el .env de cada ambiente.
 TEST_KEY = base64.b64encode(b"k" * 32).decode()
@@ -24,6 +26,9 @@ def entorno_de_pruebas(tmp_path, monkeypatch):
         poolclass=StaticPool,  # una sola conexión compartida entre los hilos de la prueba
     )
     db.Base.metadata.create_all(engine)
+    with sessionmaker(engine)() as s:  # la tabla del catálogo se llena como lo haría el repo -db
+        s.add_all(PermissionCatalog(android_name=f[0], friendly_title=f[1], explanation=f[2], severity=f[3], weight=f[4], icon=f[5]) for f in FILAS)
+        s.commit()
     monkeypatch.setattr(db, "_engine", engine)
     monkeypatch.setattr(db, "_session_factory", sessionmaker(engine, expire_on_commit=False))
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))

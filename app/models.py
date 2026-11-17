@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, LargeBinary, SmallInteger, String, Text, Uuid, func
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, Integer, LargeBinary, SmallInteger, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -38,3 +38,22 @@ class Analysis(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PermissionCatalog(Base):
+    """Permisos de Android que sabemos explicar. Solo lectura desde la API; los datos los
+    carga el repo fakeapp-radar-db (seeds/)."""
+
+    __tablename__ = "permission_catalog"
+    __table_args__ = (
+        CheckConstraint("severity in ('peligroso','atencion','normal')", name="ck_permission_catalog_severity"),
+        CheckConstraint("weight >= 0 and weight <= 100", name="ck_permission_catalog_weight"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    android_name: Mapped[str] = mapped_column(Text, unique=True)
+    friendly_title: Mapped[str] = mapped_column(Text)
+    explanation: Mapped[str] = mapped_column(Text)
+    severity: Mapped[str] = mapped_column(String(16))
+    weight: Mapped[int] = mapped_column(SmallInteger)
+    icon: Mapped[str] = mapped_column(String(32))

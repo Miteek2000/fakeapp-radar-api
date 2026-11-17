@@ -15,7 +15,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app import db, store
-from app.models import Analysis
+from app.analysis.catalog import load_catalog
+from app.models import Analysis, PermissionCatalog
 from app.schemas import AnalysisStatus
 
 pytestmark = pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="Falta TEST_DATABASE_URL")
@@ -43,6 +44,22 @@ def test_el_mapeo_de_la_api_coincide_con_la_tabla_real(pg):
     assert set(real) == set(modelo)
     for nombre, col in modelo.items():
         assert real[nombre]["nullable"] == col.nullable, f"nullable distinto en {nombre}"
+
+
+def test_el_mapeo_del_catalogo_coincide_con_la_tabla_real(pg):
+    real = {c["name"]: c for c in inspect(pg).get_columns("permission_catalog")}
+    modelo = {c.name: c for c in PermissionCatalog.__table__.columns}
+    assert set(real) == set(modelo)
+    for nombre, col in modelo.items():
+        assert real[nombre]["nullable"] == col.nullable, f"nullable distinto en {nombre}"
+
+
+def test_lee_el_catalogo_real_cargado_por_el_repo_db(pg):
+    """Necesita que la base de pruebas tenga corrido el migrador (tablas + seeds)."""
+    with db.session_scope() as s:
+        cat = load_catalog(s)
+    assert len(cat) >= 17
+    assert cat["android.permission.BIND_ACCESSIBILITY_SERVICE"].severity == "peligroso"
 
 
 def test_ciclo_completo_en_postgres(pg):

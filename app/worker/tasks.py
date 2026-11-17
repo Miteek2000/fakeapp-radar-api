@@ -5,8 +5,10 @@ from uuid import UUID
 from celery.exceptions import SoftTimeLimitExceeded
 
 from app import store
+from app.analysis.catalog import load_catalog
 from app.analysis.analyzer import InvalidApkError, analyze_apk
 from app.config import settings
+from app.db import session_scope
 from app.schemas import AnalysisStatus
 from app.worker.celery_app import celery_app
 
@@ -21,7 +23,9 @@ def analyze_apk_task(analysis_id: str) -> None:
 
     store.save(analysis_id, AnalysisStatus.running)
     try:
-        report = analyze_apk(path)
+        with session_scope() as session:
+            catalog = load_catalog(session)
+        report = analyze_apk(path, catalog)
         store.save(analysis_id, AnalysisStatus.done, report=report.model_dump(mode="json"))
     except InvalidApkError as exc:
         store.save(analysis_id, AnalysisStatus.failed, error=str(exc))

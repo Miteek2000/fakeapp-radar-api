@@ -1,3 +1,4 @@
+"""Análisis ESTÁTICO de un APK: se abre y se lee, nunca se ejecuta."""
 import hashlib
 import zipfile
 from pathlib import Path
@@ -5,7 +6,7 @@ from pathlib import Path
 from androguard.core.apk import APK
 from loguru import logger
 
-from app.analysis.catalog import lookup
+from app.analysis.catalog import Catalog
 from app.analysis.models import (
     AnalysisReport,
     Hashes,
@@ -13,14 +14,16 @@ from app.analysis.models import (
     PermissionFinding,
 )
 
+# androguard escribe miles de líneas de depuración; las apagamos.
 logger.disable("androguard")
 
 CHUNK_SIZE = 1024 * 1024
 SEVERITY_ORDER = {"peligroso": 0, "atencion": 1, "normal": 2}
 
+# Límites contra "zip bombs" (archivos pequeños que se expanden a gigas)
 MAX_UNCOMPRESSED_MB = 500
 MAX_ENTRIES = 20000
-MAX_RATIO = 100
+MAX_RATIO = 100  # descomprimido / comprimido
 
 
 class InvalidApkError(Exception):
@@ -70,8 +73,8 @@ def _to_int(value) -> int | None:
         return None
 
 
-def build_finding(android_name: str) -> PermissionFinding:
-    entry = lookup(android_name)
+def build_finding(android_name: str, catalog: Catalog) -> PermissionFinding:
+    entry = catalog.get(android_name)
     if entry is None:
         return PermissionFinding(
             android_name=android_name,
@@ -104,10 +107,12 @@ def calculate_risk(findings: list[PermissionFinding]) -> tuple[int, str]:
     return score, "bajo"
 
 
-def analyze_apk(path: str | Path, **zip_limits) -> AnalysisReport:
+def analyze_apk(path: str | Path, catalog: Catalog, **zip_limits) -> AnalysisReport:
     path = Path(path)
     check_zip_safety(path, **zip_limits)
 
+    # androguard puede fallar de muchas formas con archivos raros (y a veces
+    # no falla al abrirlos, sino después, al leer un dato). Todo va en un try.
     try:
         apk = APK(str(path))
         if not apk.is_valid_APK():
@@ -116,6 +121,7 @@ def analyze_apk(path: str | Path, **zip_limits) -> AnalysisReport:
         package_name = apk.get_package()
         min_sdk = _to_int(apk.get_min_sdk_version())
         target_sdk = _to_int(apk.get_target_sdk_version())
+        # Estos dos datos son opcionales: si faltan, el análisis sigue.
         try:
             version_name = apk.get_androidversion_name()
         except Exception:
@@ -127,7 +133,7 @@ def analyze_apk(path: str | Path, **zip_limits) -> AnalysisReport:
     except Exception as exc:
         raise InvalidApkError("No se pudo leer el contenido del APK") from exc
 
-    findings = [build_finding(name) for name in permissions]
+    findings = [build_finding(name, catalog) for name in permissions]
     findings.sort(key=lambda f: (SEVERITY_ORDER[f.severity], -f.weight, f.android_name))
 
     counts = PermissionCounts()
