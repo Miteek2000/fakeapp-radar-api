@@ -19,6 +19,7 @@ class Analysis(Base):
         CheckConstraint("status in ('pending','running','done','failed')", name="ck_analyses_status"),
         CheckConstraint("risk_score is null or (risk_score >= 0 and risk_score <= 100)", name="ck_analyses_score"),
         CheckConstraint("length(sha256) = 64", name="ck_analyses_sha256"),
+        CheckConstraint("vt_status is null or vt_status in ('pending','found','not_found','unavailable')", name="ck_analyses_vt_status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
@@ -38,6 +39,11 @@ class Analysis(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # VirusTotal (se consulta solo por SHA-256). Estados: pending | found | not_found | unavailable.
+    vt_status: Mapped[str | None] = mapped_column(String(16))
+    vt_malicious: Mapped[int | None] = mapped_column(SmallInteger)
+    vt_total: Mapped[int | None] = mapped_column(SmallInteger)
 
 
 class PermissionCatalog(Base):
@@ -62,3 +68,19 @@ class PermissionCatalog(Base):
     source: Mapped[str | None] = mapped_column(Text)
     # true = explicación y peso escritos por el proyecto; false = texto genérico a partir de AOSP.
     curated: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
+
+class VtCache(Base):
+    """Respuestas definitivas de VirusTotal por SHA-256, para no repetir consultas (cuota: 4/min, 500/día)."""
+
+    __tablename__ = "vt_cache"
+    __table_args__ = (
+        CheckConstraint("length(sha256) = 64", name="ck_vt_cache_sha256"),
+        CheckConstraint("status in ('found','not_found')", name="ck_vt_cache_status"),
+    )
+
+    sha256: Mapped[str] = mapped_column(String(64), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16))
+    malicious: Mapped[int | None] = mapped_column(SmallInteger)
+    total: Mapped[int | None] = mapped_column(SmallInteger)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

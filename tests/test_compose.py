@@ -23,6 +23,30 @@ def test_servicios_internos_no_tienen_red_con_salida(servicio):
     assert not [r for r in redes_de(servicio) if con_salida(r)]
 
 
+def test_solo_api_y_vt_worker_tienen_salida_a_internet():
+    con = {n for n in SERVICIOS if any(con_salida(r) for r in redes_de(n))}
+    assert con == {"api", "vt-worker"}
+
+
+def test_la_clave_de_virustotal_solo_la_tiene_vt_worker():
+    for nombre, s in SERVICIOS.items():
+        env = s.get("environment", {})
+        assert ("VT_API_KEY" in env) == (nombre == "vt-worker"), nombre
+
+
+def test_vt_worker_no_ve_archivos_ni_la_clave_de_cifrado():
+    s = SERVICIOS["vt-worker"]
+    assert "volumes" not in s
+    assert "ENCRYPTION_KEY" not in s["environment"]
+
+
+def test_el_worker_que_abre_apks_no_atiende_la_cola_de_virustotal():
+    cmd = SERVICIOS["worker"]["command"]
+    assert cmd[cmd.index("-Q") + 1] == "celery"
+    cmd = SERVICIOS["vt-worker"]["command"]
+    assert cmd[cmd.index("-Q") + 1] == "vt"
+
+
 def test_solo_la_api_publica_puertos_y_solo_en_localhost():
     for nombre, s in SERVICIOS.items():
         if nombre == "api":

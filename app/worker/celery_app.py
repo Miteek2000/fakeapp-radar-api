@@ -3,7 +3,7 @@ from celery.schedules import crontab
 
 from app.config import settings
 
-celery_app = Celery("fakeapp", broker=settings.redis_url, include=["app.worker.tasks", "app.worker.maintenance"])
+celery_app = Celery("fakeapp", broker=settings.redis_url, include=["app.worker.tasks", "app.worker.maintenance", "app.worker.vt_tasks"])
 
 celery_app.conf.update(
     # Solo JSON: nunca pickle (pickle permite ejecutar código al deserializar).
@@ -19,6 +19,8 @@ celery_app.conf.update(
     task_soft_time_limit=settings.analysis_time_limit_seconds,
     task_time_limit=settings.analysis_time_limit_seconds + 30,
     broker_connection_retry_on_startup=True,
+    # La consulta a VirusTotal va en su propia cola: solo la atiende el servicio vt-worker (el único con internet).
+    task_routes={"vt_lookup": {"queue": "vt"}},
     # Limpieza diaria (la dispara el servicio `beat`): 03:30 UTC.
     timezone="UTC",
     beat_schedule={

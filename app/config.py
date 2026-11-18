@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     retention_days: int = 30
     orphan_upload_hours: int = 24
 
+    # VirusTotal (fase 7). La clave la usa SOLO el servicio vt-worker.
+    vt_api_key: str = ""
+    vt_cache_hours: int = 24
+    vt_pending_max_minutes: int = 15  # pasado este tiempo, un 'pending' se muestra como no disponible
+
     # Clave AES-256 (32 bytes en base64) para cifrar los reportes. Nunca va en el código.
     encryption_key: str = ""
 

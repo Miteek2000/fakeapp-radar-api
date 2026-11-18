@@ -9,6 +9,8 @@
 #   edge         (con salida): solo la API, únicamente para publicar su puerto en tu PC
 # El worker abre APK no confiables: no está en ninguna red con salida, así que un APK
 # malicioso no podría sacar datos por internet aunque lograra ejecutar código.
+# La consulta a VirusTotal la hace OTRO servicio (vt-worker): es el único con internet y la clave,
+# y solo recibe el SHA-256 (no ve los archivos ni la clave de cifrado).
 
 x-app-env: &app-env
   UPLOAD_DIR: /data/uploads
@@ -74,7 +76,7 @@ services:
     build: .
     image: fakeapp-radar-api:dev
     restart: unless-stopped
-    command: ["celery", "-A", "app.worker.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
+    command: ["celery", "-A", "app.worker.celery_app", "worker", "--loglevel=info", "--concurrency=2", "-Q", "celery"]
     environment: *app-env
     volumes:
       - uploads:/data/uploads
@@ -87,6 +89,28 @@ services:
     pids_limit: 200
     networks:
       - backend
+      - fakeapp-net
+
+  # Consulta VirusTotal por SHA-256. Sin carpeta de subidas y sin ENCRYPTION_KEY a propósito.
+  vt-worker:
+    build: .
+    image: fakeapp-radar-api:dev
+    restart: unless-stopped
+    command: ["celery", "-A", "app.worker.celery_app", "worker", "--loglevel=info", "--concurrency=1", "-Q", "vt", "-n", "vt@%h"]
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD:?Falta REDIS_PASSWORD en .env}@redis:6379/0
+      DATABASE_URL: ${DATABASE_URL:?Falta DATABASE_URL en .env (apunta a la base del repo fakeapp-radar-db)}
+      VT_API_KEY: ${VT_API_KEY:-}
+      VT_CACHE_HOURS: ${VT_CACHE_HOURS:-24}
+    depends_on:
+      redis:
+        condition: service_healthy
+    <<: *hardening
+    mem_limit: 256m
+    pids_limit: 50
+    networks:
+      - backend
+      - edge
       - fakeapp-net
 
   # Programa la limpieza diaria de retención (la ejecuta el worker).
