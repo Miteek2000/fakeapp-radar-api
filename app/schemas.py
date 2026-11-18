@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import Enum
 from uuid import UUID
 
@@ -34,6 +35,25 @@ class VirusTotalInfo(BaseModel):
     malicious: int | None = None  # motores que lo marcan como malicioso o sospechoso
     total: int | None = None  # motores que dieron un veredicto
     url: str
+
+
+class AnalysisSummary(BaseModel):
+    """Una fila del historial del usuario (sin el reporte: ese se pide por separado)."""
+
+    id: UUID
+    status: AnalysisStatus
+    sha256: str
+    size_bytes: int
+    risk_score: int | None = None
+    risk_level: str | None = None
+    created_at: datetime
+    finished_at: datetime | None = None
+
+
+class AnalysisList(BaseModel):
+    items: list[AnalysisSummary]
+    limit: int
+    offset: int
 
 
 class AnalysisResult(BaseModel):

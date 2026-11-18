@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from app import crypto
 from app.db import session_scope
@@ -22,10 +22,11 @@ def _aad(analysis_id: UUID) -> str:
     return f"analysis:{analysis_id}"
 
 
-def create(analysis_id: str | UUID, sha256: str, size_bytes: int) -> None:
-    """Registra un análisis nuevo en estado 'pending'."""
+def create(analysis_id: str | UUID, sha256: str, size_bytes: int, user_id: str | UUID | None = None) -> None:
+    """Registra un análisis nuevo en estado 'pending'. Sin user_id = análisis anónimo."""
+    owner = UUID(str(user_id)) if user_id is not None else None
     with session_scope() as session:
-        session.add(Analysis(id=UUID(str(analysis_id)), status="pending", sha256=sha256, size_bytes=size_bytes))
+        session.add(Analysis(id=UUID(str(analysis_id)), status="pending", sha256=sha256, size_bytes=size_bytes, user_id=owner))
 
 
 def discard(analysis_id: str | UUID) -> None:
@@ -70,8 +71,33 @@ def load(analysis_id: str | UUID) -> dict[str, Any] | None:
             "report": report,
             "error": row.error,
             "virustotal": _vt_view(row),
+            "user_id": str(row.user_id) if row.user_id else None,  # quién es el dueño (None = anónimo)
         }
 
+
+def list_for_user(user_id: str | UUID, limit: int = 20, offset: int = 0) -> list[dict[str, Any]]:
+    """Historial del usuario, del más nuevo al más viejo. Solo columnas en claro: no descifra reportes."""
+    with session_scope() as session:
+        rows = session.scalars(
+            select(Analysis)
+            .where(Analysis.user_id == UUID(str(user_id)))
+            .order_by(Analysis.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        ).all()
+        return [
+            {
+                "id": str(r.id),
+                "status": r.status,
+                "sha256": r.sha256,
+                "size_bytes": r.size_bytes,
+                "risk_score": r.risk_score,
+                "risk_level": r.risk_level,
+                "created_at": r.created_at,
+                "finished_at": r.finished_at,
+            }
+            for r in rows
+        ]
 
 def purge_older_than(days: int) -> int:
     """Borra los análisis creados hace más de `days` días. Devuelve cuántos borró."""

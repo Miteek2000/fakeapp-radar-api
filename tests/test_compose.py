@@ -76,3 +76,14 @@ def test_contenedores_endurecidos(servicio):
 def test_secretos_no_estan_escritos_en_el_compose():
     texto = (Path(__file__).resolve().parents[1] / "docker-compose.yml").read_text(encoding="utf-8")
     assert "ENCRYPTION_KEY: ${ENCRYPTION_KEY:?" in texto and "REDIS_PASSWORD:?" in texto
+
+
+def test_la_clave_de_firma_de_tokens_solo_la_tiene_la_api():
+    for nombre, s in SERVICIOS.items():
+        env = s.get("environment", {})
+        assert ("JWT_PRIVATE_KEY_B64" in env) == (nombre == "api"), nombre
+
+
+def test_la_api_cuenta_el_limite_de_peticiones_en_redis_con_contrasena():
+    env = SERVICIOS["api"]["environment"]
+    assert env["RATE_LIMIT_STORAGE_URI"].startswith("redis://:${REDIS_PASSWORD}@redis:6379/")

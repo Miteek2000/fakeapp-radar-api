@@ -58,7 +58,15 @@ services:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
       - "127.0.0.1:8000:8000"
-    environment: *app-env
+    environment:
+      <<: *app-env
+      # Solo la API firma tokens: el worker, beat y vt-worker no reciben esta clave.
+      JWT_PRIVATE_KEY_B64: ${JWT_PRIVATE_KEY_B64:?Falta JWT_PRIVATE_KEY_B64 en .env (ver .env.example)}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      ALLOW_ANONYMOUS: ${ALLOW_ANONYMOUS:-true}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000}
+      # El límite de peticiones se cuenta en Redis (base 1), así vale para todos los procesos de la API.
+      RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD}@redis:6379/1
     volumes:
       - uploads:/data/uploads
     depends_on:

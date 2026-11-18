@@ -6,13 +6,17 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app import db
+from app.auth.keygen import generate_b64
 from app.config import settings
+from app.ratelimit import limiter
 from app.models import PermissionCatalog
 from app.worker.celery_app import celery_app
 from tests.catalogo_prueba import FILAS
 
 # Clave de prueba (32 bytes en base64). La real vive solo en el .env de cada ambiente.
 TEST_KEY = base64.b64encode(b"k" * 32).decode()
+# Clave RSA de prueba (2048 bits para que las pruebas sean rápidas); se genera una sola vez.
+TEST_JWT_KEY = generate_b64(2048)
 
 
 @pytest.fixture(autouse=True)
@@ -33,6 +37,10 @@ def entorno_de_pruebas(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "_session_factory", sessionmaker(engine, expire_on_commit=False))
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
     monkeypatch.setattr(settings, "encryption_key", TEST_KEY)
+    monkeypatch.setattr(settings, "jwt_private_key_b64", TEST_JWT_KEY)
+    # El límite de peticiones se apaga salvo en las pruebas que lo verifican (si no, subir varios APK seguidos fallaría).
+    limiter.reset()
+    limiter.enabled = False
 
     # Se asigna y se restaura a mano: monkeypatch intenta borrar el atributo al
     # terminar y el objeto de configuracion de Celery no lo permite.
@@ -42,4 +50,6 @@ def entorno_de_pruebas(tmp_path, monkeypatch):
         yield
     finally:
         celery_app.conf.task_always_eager = anterior
+        limiter.enabled = True
+        limiter.reset()
         engine.dispose()

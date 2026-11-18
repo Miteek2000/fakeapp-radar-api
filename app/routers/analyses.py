@@ -4,12 +4,15 @@ import uuid
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from starlette.concurrency import run_in_threadpool
 
 from app import store
+from app.auth.deps import UNAUTHORIZED, current_user, optional_user
+from app.auth.service import UserView
 from app.config import settings
-from app.schemas import AnalysisCreated, AnalysisResult, AnalysisStatus
+from app.ratelimit import limiter
+from app.schemas import AnalysisCreated, AnalysisList, AnalysisResult, AnalysisStatus
 from app.worker.tasks import analyze_apk_task
 
 log = logging.getLogger(__name__)
@@ -19,9 +22,9 @@ CHUNK_SIZE = 1024 * 1024  # 1 MB
 ZIP_MAGIC = b"PK\x03\x04"  # un APK es un archivo ZIP
 
 
-def _enqueue(analysis_id: UUID, sha256: str, size: int) -> None:
+def _enqueue(analysis_id: UUID, sha256: str, size: int, user_id: UUID | None) -> None:
     # Primero el registro (el worker lo va a actualizar) y luego la tarea.
-    store.create(analysis_id, sha256, size)
+    store.create(analysis_id, sha256, size, user_id)
     try:
         analyze_apk_task.delay(str(analysis_id))
     except Exception:
@@ -30,7 +33,15 @@ def _enqueue(analysis_id: UUID, sha256: str, size: int) -> None:
 
 
 @router.post("", response_model=AnalysisCreated, status_code=status.HTTP_202_ACCEPTED)
-async def create_analysis(file: UploadFile = File(...)):
+@limiter.limit(lambda: settings.rate_upload)
+async def create_analysis(
+    request: Request,
+    response: Response,
+    file: UploadFile = File(...),
+    user: UserView | None = Depends(optional_user),
+):
+    if user is None and not settings.allow_anonymous:
+        raise HTTPException(status_code=401, detail="Inicia sesión para analizar un archivo.", headers=UNAUTHORIZED)
     if not (file.filename or "").lower().endswith(".apk"):
         raise HTTPException(status_code=400, detail="El archivo debe ser un .apk")
 
@@ -69,7 +80,7 @@ async def create_analysis(file: UploadFile = File(...)):
 
     # Encolamos el análisis: el worker lo hará en segundo plano.
     try:
-        await run_in_threadpool(_enqueue, analysis_id, sha256.hexdigest(), size)
+        await run_in_threadpool(_enqueue, analysis_id, sha256.hexdigest(), size, user.id if user else None)
     except Exception:
         log.exception("No se pudo encolar el análisis %s", analysis_id)
         dest.unlink(missing_ok=True)
@@ -86,9 +97,20 @@ async def create_analysis(file: UploadFile = File(...)):
     )
 
 
+@router.get("", response_model=AnalysisList)
+def list_my_analyses(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    user: UserView = Depends(current_user),
+):
+    """Historial de los análisis hechos con tu cuenta."""
+    return {"items": store.list_for_user(user.id, limit, offset), "limit": limit, "offset": offset}
+
+
 @router.get("/{analysis_id}", response_model=AnalysisResult)
-def get_analysis(analysis_id: UUID):
+def get_analysis(analysis_id: UUID, user: UserView | None = Depends(optional_user)):
     data = store.load(analysis_id)
-    if data is None:
+    # Un análisis con dueño solo lo ve su dueño. Para los demás "no existe" (así ni se sabe que existe).
+    if data is None or (data["user_id"] is not None and (user is None or data["user_id"] != str(user.id))):
         raise HTTPException(status_code=404, detail="No encontramos ese análisis")
     return data

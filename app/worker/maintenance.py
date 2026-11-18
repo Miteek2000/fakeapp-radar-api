@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from app import store
+from app.auth import service as auth_service
 from app.config import settings
 from app.worker.celery_app import celery_app
 
@@ -38,6 +39,7 @@ def run(days: int | None = None, hours: int | None = None) -> dict[str, int]:
     result = {
         "analyses_deleted": store.purge_older_than(days),
         "uploads_deleted": purge_orphan_uploads(settings.upload_dir, hours),
+        "refresh_tokens_deleted": auth_service.purge_old_refresh_tokens(),
     }
     log.info("Limpieza de retención: %s", result)
     return result

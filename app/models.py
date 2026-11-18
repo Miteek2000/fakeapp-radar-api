@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Integer, LargeBinary, SmallInteger, String, Text, Uuid, func
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, ForeignKey, DateTime, Integer, LargeBinary, SmallInteger, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -45,6 +45,9 @@ class Analysis(Base):
     vt_malicious: Mapped[int | None] = mapped_column(SmallInteger)
     vt_total: Mapped[int | None] = mapped_column(SmallInteger)
 
+    # Dueño del análisis; vacío = anónimo.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+
 
 class PermissionCatalog(Base):
     """Permisos de Android que sabemos explicar. Solo lectura desde la API; los datos los
@@ -84,3 +87,32 @@ class VtCache(Base):
     malicious: Mapped[int | None] = mapped_column(SmallInteger)
     total: Mapped[int | None] = mapped_column(SmallInteger)
     checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class User(Base):
+    """Cuenta de usuario. Solo se guarda el hash Argon2id de la contraseña."""
+
+    __tablename__ = "users"
+    __table_args__ = (CheckConstraint("email = lower(email)", name="ck_users_email_lower"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(Text, unique=True)
+    password_hash: Mapped[str] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RefreshToken(Base):
+    """Sesión renovable. Se guarda el SHA-256 del token, nunca el token."""
+
+    __tablename__ = "refresh_tokens"
+    __table_args__ = (CheckConstraint("length(token_hash) = 64", name="ck_refresh_tokens_hash"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    family_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rotated: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -16,7 +16,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app import db, store
 from app.analysis.catalog import load_catalog
-from app.models import Analysis, PermissionCatalog, VtCache
+from app.models import Analysis, PermissionCatalog, RefreshToken, User, VtCache
 from app.schemas import AnalysisStatus
 
 pytestmark = pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="Falta TEST_DATABASE_URL")
@@ -31,9 +31,11 @@ def pg(monkeypatch):
     monkeypatch.setattr(db, "_session_factory", sessionmaker(engine, expire_on_commit=False))
     with engine.begin() as c:
         c.execute(text("delete from analyses"))
+        c.execute(text("delete from users"))
     yield engine
     with engine.begin() as c:
         c.execute(text("delete from analyses"))
+        c.execute(text("delete from users"))
     engine.dispose()
 
 
@@ -60,6 +62,38 @@ def test_el_mapeo_de_la_cache_de_virustotal_coincide_con_la_tabla_real(pg):
     assert set(real) == set(modelo)
     for nombre, col in modelo.items():
         assert real[nombre]["nullable"] == col.nullable, f"nullable distinto en {nombre}"
+
+
+@pytest.mark.parametrize("modelo", [User, RefreshToken])
+def test_el_mapeo_de_usuarios_y_sesiones_coincide_con_la_tabla_real(pg, modelo):
+    real = {c["name"]: c for c in inspect(pg).get_columns(modelo.__tablename__)}
+    esperado = {c.name: c for c in modelo.__table__.columns}
+    assert set(real) == set(esperado)
+    for nombre, col in esperado.items():
+        assert real[nombre]["nullable"] == col.nullable, f"nullable distinto en {nombre}"
+
+
+def test_borrar_un_usuario_borra_sus_sesiones_y_sus_analisis(pg):
+    from app.auth import service
+    u = service.register("mayte@ejemplo.com", "una-clave-larga-123")
+    sesion = service.login("mayte@ejemplo.com", "una-clave-larga-123")
+    store.create(uuid.uuid4(), "d" * 64, 1, user_id=u.id)
+    store.create(uuid.uuid4(), "e" * 64, 1)  # anónimo: no debe borrarse
+    with pg.begin() as c:
+        c.execute(text("delete from users"))
+        assert c.execute(text("select count(*) from refresh_tokens")).scalar() == 0
+        assert c.execute(text("select count(*) from analyses")).scalar() == 1
+
+
+def test_postgres_rechaza_correos_en_mayusculas_o_duplicados(pg):
+    with pytest.raises(IntegrityError):
+        with pg.begin() as c:
+            c.execute(text("insert into users (id, email, password_hash) values (gen_random_uuid(), 'Mayte@X.com', 'h')"))
+    with pg.begin() as c:
+        c.execute(text("insert into users (id, email, password_hash) values (gen_random_uuid(), 'mayte@x.com', 'h')"))
+    with pytest.raises(IntegrityError):
+        with pg.begin() as c:
+            c.execute(text("insert into users (id, email, password_hash) values (gen_random_uuid(), 'mayte@x.com', 'h')"))
 
 
 def test_lee_el_catalogo_real_cargado_por_el_repo_db(pg):

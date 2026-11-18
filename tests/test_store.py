@@ -19,7 +19,7 @@ def test_load_de_un_id_que_no_existe():
 def test_ciclo_de_vida_pending_running_done():
     uid = uuid.uuid4()
     store.create(uid, SHA, 123)
-    assert store.load(uid) == {"id": str(uid), "status": "pending", "report": None, "error": None, "virustotal": None}
+    assert store.load(uid) == {"id": str(uid), "status": "pending", "report": None, "error": None, "virustotal": None, "user_id": None}
 
     store.save(uid, AnalysisStatus.running)
     assert store.load(uid)["status"] == "running"
