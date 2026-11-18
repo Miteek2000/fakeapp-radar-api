@@ -1,0 +1,26 @@
+# Proxy HTTPS de FakeApp Radar: solo TLS 1.3, certificado local propio (tls internal).
+# Entrada única https://localhost -> pantalla web (Next, en tu PC en el puerto 3000),
+# que a su vez reenvía /api a la API.
+{
+	# Sin panel de administración abierto y sin telemetría de arranque.
+	admin off
+}
+
+localhost {
+	tls internal {
+		protocols tls1.3
+	}
+
+	encode zstd gzip
+
+	header {
+		# El navegador recuerda usar solo HTTPS con este sitio.
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	reverse_proxy host.docker.internal:3000
+}

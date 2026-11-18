@@ -8,8 +8,9 @@ foreach ($img in $images) {
     Write-Host "== $img ==" -ForegroundColor Cyan
     docker run --rm `
         -v //var/run/docker.sock:/var/run/docker.sock `
-        -v "${PWD}/security/reports:/reports" `
-        aquasec/trivy:latest image --severity HIGH,CRITICAL --ignore-unfixed `
-        --format table -o "/reports/trivy_$name.txt" $img
-    Get-Content "security/reports/trivy_$name.txt" | Select-Object -First 40
+        -v "${PWD}:/src" -w /src `
+        aquasec/trivy:latest image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed `
+        --format table -o "/src/security/reports/trivy_$name.txt" $img
+    # Resumen legible: solo las líneas con CVE y los totales (el detalle completo queda en el .txt)
+    Select-String -Path "security/reports/trivy_$name.txt" -Pattern "Total:|CVE-" | ForEach-Object { $_.Line.Trim() } | Select-Object -First 25
 }
