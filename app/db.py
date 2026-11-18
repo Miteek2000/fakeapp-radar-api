@@ -32,7 +32,8 @@ def get_engine() -> Engine:
 def session_scope() -> Iterator[Session]:
     """Una transacción: se confirma si todo sale bien y se revierte si hay un error."""
     get_engine()
-    assert _session_factory is not None
+    if _session_factory is None:  # no debería pasar tras get_engine(); un assert se borra con python -O
+        raise RuntimeError("La base de datos no está inicializada")
     session = _session_factory()
     try:
         yield session

@@ -34,7 +34,8 @@ def lookup(sha256: str, api_key: str) -> VtResult:
 
     req = urllib.request.Request(BASE_URL + sha256, headers={"x-apikey": api_key, "accept": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
+        # BASE_URL es una constante https y el sha256 ya se validó arriba: no hay esquemas raros posibles.
+        with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:  # nosec B310
             body = json.load(resp)
     except urllib.error.HTTPError as exc:
         if exc.code == 404:

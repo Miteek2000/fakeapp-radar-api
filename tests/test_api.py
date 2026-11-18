@@ -130,3 +130,12 @@ def test_el_resultado_persiste_y_se_puede_consultar_varias_veces(tmp_path):
     segundo = client.get(f"/analyses/{analysis_id}").json()
     assert primero == segundo
     assert primero["status"] == "done"
+
+
+def test_cabeceras_de_seguridad_en_todas_las_respuestas():
+    for path in ("/health", "/openapi.json"):
+        r = client.get(path)
+        assert r.headers["x-content-type-options"] == "nosniff"
+        assert r.headers["cross-origin-resource-policy"] == "same-origin"
+        assert r.headers["x-frame-options"] == "DENY"
+        assert r.headers["cache-control"] == "no-store"

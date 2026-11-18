@@ -67,6 +67,7 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000}
       # El límite de peticiones se cuenta en Redis (base 1), así vale para todos los procesos de la API.
       RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD}@redis:6379/1
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}  # solo se apaga para la corrida de ZAP
     volumes:
       - uploads:/data/uploads
     depends_on:

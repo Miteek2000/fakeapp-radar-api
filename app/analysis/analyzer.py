@@ -57,7 +57,11 @@ def check_zip_safety(
 
 
 def compute_hashes(path: Path) -> Hashes:
-    md5, sha1, sha256 = hashlib.md5(), hashlib.sha1(), hashlib.sha256()
+    # MD5 y SHA-1 solo se muestran como datos de referencia (otras herramientas los usan para
+    # identificar archivos); no protegen nada. La identidad real del archivo es el SHA-256.
+    md5 = hashlib.md5(usedforsecurity=False)
+    sha1 = hashlib.sha1(usedforsecurity=False)
+    sha256 = hashlib.sha256()
     with path.open("rb") as f:
         while chunk := f.read(CHUNK_SIZE):
             md5.update(chunk)
