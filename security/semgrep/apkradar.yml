@@ -1,0 +1,63 @@
+# Reglas propias de Semgrep para APK Radar. Uso:  semgrep scan --config security/semgrep app/
+rules:
+  - id: apkradar-hash-debil
+    languages: [python]
+    severity: WARNING
+    message: >-
+      MD5/SHA-1 sin usedforsecurity=False. Úsalo solo para datos de referencia que no protegen nada,
+      y márcalo; para integridad o identidad usa SHA-256.
+    metadata:
+      cwe: "CWE-327"
+    patterns:
+      - pattern-either:
+          - pattern: hashlib.md5(...)
+          - pattern: hashlib.sha1(...)
+          - pattern: hashlib.new("=~/^(?i)(md5|sha-?1)$/", ...)
+          - pattern: hashes.MD5()
+          - pattern: hashes.SHA1()
+      - pattern-not: hashlib.md5(..., usedforsecurity=False)
+      - pattern-not: hashlib.sha1(..., usedforsecurity=False)
+      - pattern-not: hashlib.new("=~/^(?i)(md5|sha-?1)$/", ..., usedforsecurity=False)
+
+  - id: apkradar-urlopen-sin-esquema-fijo
+    languages: [python]
+    severity: WARNING
+    message: >-
+      urlopen con una URL que no es constante: podría aceptar file:// u otros esquemas. Valida que
+      empiece con https:// o usa una URL fija.
+    metadata:
+      cwe: "CWE-918"
+    patterns:
+      - pattern: urllib.request.urlopen($REQ, ...)
+      - pattern-not: urllib.request.urlopen("https://...", ...)
+
+  - id: apkradar-assert-en-codigo-de-seguridad
+    languages: [python]
+    severity: INFO
+    message: Un assert desaparece con python -O. No lo uses para validar nada; lanza una excepción.
+    pattern: assert $COND
+    paths:
+      exclude: ["tests/", "security/"]
+
+  - id: apkradar-subprocess-shell
+    languages: [python]
+    severity: ERROR
+    message: subprocess con shell=True permite inyección de comandos.
+    pattern: subprocess.$FUNC(..., shell=True, ...)
+
+  - id: apkradar-verify-false
+    languages: [python]
+    severity: ERROR
+    message: Se desactiva la verificación de certificados TLS.
+    pattern-either:
+      - pattern: requests.$FUNC(..., verify=False, ...)
+      - pattern: ssl._create_unverified_context(...)
+
+  - id: apkradar-yaml-load-inseguro
+    languages: [python]
+    severity: ERROR
+    message: yaml.load sin SafeLoader puede ejecutar código. Usa yaml.safe_load.
+    patterns:
+      - pattern: yaml.load(...)
+      - pattern-not: yaml.load(..., Loader=yaml.SafeLoader)
+      - pattern-not: yaml.load(..., Loader=SafeLoader)

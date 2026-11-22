@@ -1,0 +1,5 @@
+name: apkradar/python-queries
+version: 1.0.0
+description: Consultas propias de APK Radar (práctica de CodeQL)
+dependencies:
+  codeql/python-all: "*"

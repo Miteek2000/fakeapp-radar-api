@@ -1,0 +1,10 @@
+Consulta propia: WeakHashVariants.ql  (hash débil MD5/SHA-1 y todas sus variantes)
+
+Local (Windows, con CodeQL CLI descargado de github.com/github/codeql-action/releases):
+  codeql database create db-codeql --language=python --source-root=. --overwrite
+  codeql pack install security/codeql
+  codeql database analyze db-codeql security/codeql/WeakHashVariants.ql --format=sarif-latest --output=security/reports/codeql_custom.sarif
+  codeql database analyze db-codeql codeql/python-queries:codeql-suites/python-security-and-quality.qls --format=csv --output=security/reports/codeql_std.csv
+
+Prueba de la consulta: ejemplos/variantes_hash.py debe dar 6 resultados (los marcados MALO).
+Semgrep:  semgrep scan --config security/semgrep app
