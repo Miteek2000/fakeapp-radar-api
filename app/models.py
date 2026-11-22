@@ -66,7 +66,7 @@ class PermissionCatalog(Base):
     severity: Mapped[str] = mapped_column(String(16))
     weight: Mapped[int] = mapped_column(SmallInteger)
     icon: Mapped[str] = mapped_column(String(32))
-    # Nivel de protección oficial de AOSP y claves de las fuentes (ver docs/fuentes.md en el repo -db).
+    # Nivel de protección oficial de AOSP y claves de las fuentes (ver docs/Fuentes_Catalogo_Permisos.docx en el repo -db).
     protection_level: Mapped[str | None] = mapped_column(Text)
     source: Mapped[str | None] = mapped_column(Text)
     # true = explicación y peso escritos por el proyecto; false = texto genérico a partir de AOSP.
